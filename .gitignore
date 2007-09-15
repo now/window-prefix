@@ -1,0 +1,10 @@
+*.ncb
+*.suo
+*.user
+/bak
+/Debug
+/old
+/Release
+/hook/Debug
+/hook/Release
+/t

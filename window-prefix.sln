@@ -1,0 +1,28 @@
+Microsoft Visual Studio Solution File, Format Version 9.00
+# Visual C++ Express 2005
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "window-prefix", "window-prefix.vcproj", "{C081421C-6EB2-4B3A-BF90-4E000E571C79}"
+	ProjectSection(ProjectDependencies) = postProject
+		{CCEBC3D7-B91D-4868-86CD-25D908C67840} = {CCEBC3D7-B91D-4868-86CD-25D908C67840}
+	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "hook", "hook\hook.vcproj", "{CCEBC3D7-B91D-4868-86CD-25D908C67840}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Win32 = Debug|Win32
+		Release|Win32 = Release|Win32
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{C081421C-6EB2-4B3A-BF90-4E000E571C79}.Debug|Win32.ActiveCfg = Debug|Win32
+		{C081421C-6EB2-4B3A-BF90-4E000E571C79}.Debug|Win32.Build.0 = Debug|Win32
+		{C081421C-6EB2-4B3A-BF90-4E000E571C79}.Release|Win32.ActiveCfg = Release|Win32
+		{C081421C-6EB2-4B3A-BF90-4E000E571C79}.Release|Win32.Build.0 = Release|Win32
+		{CCEBC3D7-B91D-4868-86CD-25D908C67840}.Debug|Win32.ActiveCfg = Debug|Win32
+		{CCEBC3D7-B91D-4868-86CD-25D908C67840}.Debug|Win32.Build.0 = Debug|Win32
+		{CCEBC3D7-B91D-4868-86CD-25D908C67840}.Release|Win32.ActiveCfg = Release|Win32
+		{CCEBC3D7-B91D-4868-86CD-25D908C67840}.Release|Win32.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

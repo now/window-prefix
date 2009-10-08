@@ -2,6 +2,7 @@
 #include <vld.h>
 #include <stdarg.h>
 #include <gdiplus.h>
+#include <shlobj.h>
 #include "window-prefix.h"
 #include "list.h"
 #include "windowlistitem.h"
@@ -25,6 +26,8 @@
 #define CORNER_PADDING          (CORNER_SIZE / 2)
 #define SUB_AREA_Y_PADDING      (CORNER_PADDING / 2)
 
+#define TITLE_STRING _(IDS_LIST_TITLE, L"Switch to…")
+
 static HINSTANCE s_instance;
 static LPCWSTR g_window_name;
 
@@ -44,7 +47,7 @@ GraphicsSetup(Graphics *canvas)
         RETURN_GDI_FAILURE(canvas->SetSmoothingMode(SmoothingModeHighQuality));
         RETURN_GDI_FAILURE(canvas->SetCompositingQuality(CompositingQualityHighQuality));
         RETURN_GDI_FAILURE(canvas->SetCompositingMode(CompositingModeSourceOver));
-        RETURN_GDI_FAILURE(canvas->SetTextRenderingHint(TextRenderingHintAntiAliasGridFit));
+        RETURN_GDI_FAILURE(canvas->SetTextRenderingHint(TextRenderingHintClearTypeGridFit));
         return Ok;
 }
 
@@ -179,8 +182,7 @@ DrawTitle(Graphics *canvas, Font *font, RectF *area)
         SolidBrush white_brush(Color::White);
         RETURN_GDI_FAILURE(white_brush.GetLastStatus());
 
-        return canvas->DrawString(_(IDS_LIST_TITLE, L"Switch to…"), -1, font,
-                                  *area, &format, &white_brush);
+        return canvas->DrawString(TITLE_STRING, -1, font, *area, &format, &white_brush);
 }
 
 #define FREE_AND_RETURN_GDI_FAILURE(call, memory_dc) MACRO_BLOCK_START  \
@@ -251,10 +253,19 @@ CalculateSubAreas(Graphics *canvas, PointF *origin, Rect *constraint_area)
         SizeF window_list_size;
         RETURN_GDI_FAILURE(WindowListSize(g_list, canvas, &window_list_size));
 
+        RectF title_area;
+        RETURN_GDI_FAILURE(canvas->MeasureString(TITLE_STRING,
+                                                   -1,
+                                                   g_caption_font,
+                                                   PointF(0.0f, 0.0f),
+                                                   &title_area));
+
         g_title_area.X = origin->X;
         g_title_area.Y = origin->Y;
-        g_title_area.Width = min(max(buffer_size.Width, window_list_size.Height), constraint_area->Width);
-        g_title_area.Height = g_caption_font->GetHeight(canvas);
+        g_title_area.Width = title_area.Width; //window_list_size.Width;
+        REAL height = g_caption_font->GetHeight(canvas);
+        RETURN_GDI_FAILURE(g_caption_font->GetLastStatus());
+        g_title_area.Height = height;
 
         /* The buffer area’s width is set to be the same as that of the
          * window list, as at the time this procedure is called, the
@@ -288,17 +299,16 @@ AdjustWindowSize(HWND window)
 
         CalculateSubAreas(&canvas, &PointF(CORNER_PADDING, CORNER_PADDING), &constraint_area);
 
-        INT width = (INT)(max(min(max(max(g_title_area.Width,
+        INT width = (INT)(min(max(max(g_title_area.Width,
                                           g_buffer_area.Width),
                                       g_window_list_area.Width),
-                                  half_screen_width),
-                              quarter_screen_width)
-                          + 2 * CORNER_SIZE);
+                                  half_screen_width)
+                          + CORNER_SIZE);
         INT height = (INT)(g_window_list_area.GetBottom() + CORNER_PADDING);
 
-        g_title_area.Width = min(g_title_area.Width, width - CORNER_SIZE);
-        g_buffer_area.Width = min(g_buffer_area.Width, width - CORNER_SIZE);
-        g_window_list_area.Width = min(g_window_list_area.Width, width - CORNER_SIZE);
+        g_title_area.Width = min(g_title_area.Width, width - CORNER_SIZE / 2);
+        g_buffer_area.Width = min(g_buffer_area.Width, width - CORNER_SIZE / 2);
+        g_window_list_area.Width = min(g_window_list_area.Width, width - CORNER_SIZE / 2);
 
         RECT current_area;
         GetWindowRect(window, &current_area);
@@ -446,6 +456,27 @@ DisplayWindowListIfNotAlreadyDisplayed(HWND window)
 
         SetWindowPos(window, HWND_TOPMOST, 0, 0, 0, 0, SWP_SHOWWINDOW | SWP_NOSIZE | SWP_NOMOVE);
         SetForegroundWindow(window);
+
+        if (WindowListLength(g_list) < 2) {
+                Sleep(1000);
+
+                BLENDFUNCTION blend;
+
+                blend.BlendOp = AC_SRC_OVER;
+                blend.BlendFlags = 0;
+                blend.SourceConstantAlpha = 255;
+                blend.AlphaFormat = AC_SRC_ALPHA;
+
+                while (blend.SourceConstantAlpha > 25) {
+                        blend.SourceConstantAlpha -= 25;
+                        UpdateLayeredWindow(window, NULL, NULL, NULL, NULL, NULL, NULL, &blend, ULW_ALPHA);
+                        Sleep(12);
+                }
+                if (WindowListLength(g_list) > 0)
+                        SwitchToAndHide(WindowListNthShown(g_list, 0), window);
+                else
+                        HideWindow(window);
+        }
 }
 
 static LRESULT 
@@ -669,18 +700,232 @@ CreateMainWindow(HINSTANCE instance, ATOM window_class, HWND *window, Error **er
 #ifdef _DEBUG
 #  define MY_HOTKEY_KEY L'5'
 #else
-#  define MY_HOTKEY_KEY L'4'
+#  define MY_HOTKEY_KEY L'8'
 #endif
+
+static LPCTSTR
+ParseModifier(LPCTSTR input, UINT *modifier)
+{
+        static struct {
+                LPCTSTR string;
+                UINT modifier;
+        } const strings[] = {
+                { L"Alt", MOD_ALT },
+                { L"Ctrl", MOD_CONTROL },
+                { L"Shift", MOD_SHIFT },
+                { L"Win", MOD_WIN }
+        };
+
+        int i;
+        for (i = 0; i < _countof(strings); i++)
+                if (IsPrefixIgnoringCase(input, strings[i].string))
+                        break;
+
+        if (i == _countof(strings))
+                return NULL;
+
+        *modifier = strings[i].modifier;
+        size_t length;
+        if (FAILED(StringCchLength(strings[i].string, STRSAFE_MAX_CCH, &length)))
+                return NULL;
+
+        return input + length;
+}
+
+static BOOL
+ParseKey(LPCTSTR input, UINT *key)
+{
+        static struct {
+                LPCTSTR string;
+                UINT key;
+        } const strings[] = {
+                { L"Backspace", VK_BACK },
+                { L"BS", VK_BACK },
+                { L"Tab", VK_TAB },
+                { L"Enter", VK_RETURN },
+                { L"Return", VK_RETURN },
+                { L"Pause", VK_PAUSE },
+                { L"Break", VK_PAUSE },
+                { L"Escape", VK_ESCAPE },
+                { L"Esc", VK_ESCAPE },
+                { L"Space", VK_SPACE },
+                { L"Page Up", VK_PRIOR },
+                { L"Page Down", VK_NEXT },
+                { L"End", VK_END },
+                { L"Home", VK_HOME },
+                { L"Left", VK_LEFT },
+                { L"Up", VK_UP },
+                { L"Right", VK_RIGHT },
+                { L"Down", VK_DOWN },
+                { L"Select", VK_SELECT },
+                { L"Print Screen", VK_PRINT },
+                { L"PrintScr", VK_PRINT },
+                { L"Insert", VK_INSERT },
+                { L"Ins", VK_INSERT },
+                { L"Delete", VK_DELETE },
+                { L"Del", VK_DELETE },
+                { L"Help", VK_HELP },
+                { L"Numpad 0", VK_NUMPAD0 },
+                { L"Numpad 1", VK_NUMPAD1 },
+                { L"Numpad 2", VK_NUMPAD2 },
+                { L"Numpad 3", VK_NUMPAD3 },
+                { L"Numpad 4", VK_NUMPAD4 },
+                { L"Numpad 5", VK_NUMPAD5 },
+                { L"Numpad 6", VK_NUMPAD6 },
+                { L"Numpad 7", VK_NUMPAD7 },
+                { L"Numpad 8", VK_NUMPAD8 },
+                { L"Numpad 9", VK_NUMPAD9 },
+                { L"Numpad *", VK_MULTIPLY },
+                { L"Numpad +", VK_MULTIPLY },
+                { L"Numpad 1000 Separator", VK_SEPARATOR },
+                { L"Numpad -", VK_SUBTRACT },
+                { L"Numpad .", VK_DECIMAL },
+                { L"Numpad ,", VK_DECIMAL },
+                { L"Numpad /", VK_DIVIDE },
+                { L"F1", VK_F1 },
+                { L"F2", VK_F2 },
+                { L"F3", VK_F3 },
+                { L"F4", VK_F4 },
+                { L"F5", VK_F5 },
+                { L"F6", VK_F6 },
+                { L"F7", VK_F7 },
+                { L"F8", VK_F8 },
+                { L"F9", VK_F9 },
+                { L"F10", VK_F10 },
+                { L"F11", VK_F11 },
+                { L"F12", VK_F12 },
+                { L"F13", VK_F13 },
+                { L"F14", VK_F14 },
+                { L"F15", VK_F15 },
+                { L"F16", VK_F16 },
+                { L"F17", VK_F17 },
+                { L"F18", VK_F18 },
+                { L"F19", VK_F19 },
+                { L"F20", VK_F20 },
+                { L"F21", VK_F21 },
+                { L"F22", VK_F22 },
+                { L"F23", VK_F23 },
+                { L"F24", VK_F24 },
+                { L"Scroll Lock", VK_SCROLL },
+                { L"Browser Back", VK_BROWSER_BACK },
+                { L"Browser Forward", VK_BROWSER_FORWARD },
+                { L"Browser Refresh", VK_BROWSER_REFRESH },
+                { L"Browser Stop", VK_BROWSER_STOP },
+                { L"Browser Search", VK_BROWSER_SEARCH },
+                { L"Browser Favorites", VK_BROWSER_FAVORITES },
+                { L"Browser Home", VK_BROWSER_HOME },
+                { L"Volume Mute", VK_VOLUME_MUTE },
+                { L"Volume Down", VK_VOLUME_DOWN },
+                { L"Volume Up", VK_VOLUME_UP },
+                { L"Media Next Track", VK_MEDIA_NEXT_TRACK },
+                { L"Media Previous Track", VK_MEDIA_PREV_TRACK },
+                { L"Media Play/Pause", VK_MEDIA_PLAY_PAUSE },
+                { L"Launch Mail", VK_LAUNCH_MAIL },
+                { L"Launch Media Select", VK_LAUNCH_MEDIA_SELECT },
+                { L"Launch Application 1", VK_LAUNCH_APP1 },
+                { L"Launch Application 2", VK_LAUNCH_APP2 },
+        };
+
+        size_t remaining;
+        if (FAILED(StringCchLength(input, STRSAFE_MAX_CCH, &remaining)))
+                return FALSE;
+
+        if (remaining == 0)
+                return FALSE;
+
+        /* Check names */
+        int i = 0;
+        for (i = 0; i < _countof(strings); i++) {
+                if (CompareString(LOCALE_INVARIANT, NORM_IGNORECASE,
+                                  strings[i].string, remaining,
+                                  input, -1) == CSTR_EQUAL) {
+                        *key = strings[i].key;
+                        return TRUE;
+                }
+        }
+
+        /* Check for a C-like number */
+        if (*input == L'<' && remaining > 1) {
+                LPTSTR end;
+                int key_scan = _tcstol(CharNext(input), &end, 0);
+                if (end != input && *end == L'>') {
+                        *key = key_scan;
+                        return TRUE;
+                }
+        }
+
+        if (remaining > 1)
+                return FALSE;
+
+        *key = VkKeyScan(*input);
+        return TRUE;
+}
+
+static void
+DetermineHotkey(UINT *modifiers, UINT *key)
+{
+        *modifiers = MOD_WIN;
+        *key = VkKeyScan(MY_HOTKEY_KEY);
+
+        TCHAR settings[MAX_PATH];
+        if (FAILED(SHGetFolderPath(NULL, CSIDL_APPDATA |
+                                      CSIDL_FLAG_DONT_UNEXPAND |
+                                      CSIDL_FLAG_DONT_VERIFY, NULL,
+                                      SHGFP_TYPE_CURRENT, settings)))
+                return;
+
+        if (FAILED(StringCchCat(settings, MAX_PATH, L"\\Window Prefix\\settings.ini")))
+                return;
+
+        int length = MAX_PATH;
+        TCHAR *specification = new TCHAR[length];
+        while (GetPrivateProfileString(L"Settings", L"Key", NULL, specification, length, settings) == length - 1) {
+                length *= 2;
+                delete specification;
+                specification = new TCHAR[length];
+        }
+
+        LPCTSTR p = specification;
+        UINT parsed_modifiers = 0;
+        while (true) {
+                UINT parsed_modifier;
+                LPCTSTR q = ParseModifier(p, &parsed_modifier);
+                if (q == NULL)
+                        break;
+                parsed_modifiers |= parsed_modifier;
+                if (!IsPrefixIgnoringCase(q, L"+"))
+                        goto cleanup;
+                p = q + 1;
+        }
+
+        UINT parsed_key;
+        if (!ParseKey(p, &parsed_key))
+                goto cleanup;
+
+        *modifiers = parsed_modifiers;
+        *key = parsed_key;
+
+cleanup:
+        delete specification;
+}
 
 static BOOL 
 InstallHotkey(HWND window, Error **error)
 {
+        UINT modifiers, key;
+        DetermineHotkey(&modifiers, &key);
+
+#if _DEBUG
+        modifiers = MOD_CONTROL;
+        key = MY_HOTKEY_KEY;
+#endif
+
         /* TODO: Is this a fatal error?  I mean, a user could theoretically still
          * use the application, as we do respond to messages and they could post
          * the message to display the main window anyway.  Still, the only reason
          * for this failing is a misconfiguration or if we’re already running an
          * instance. */
-        RegisterHotKey(window, 0, MOD_CONTROL, VkKeyScan(MY_HOTKEY_KEY));
+        RegisterHotKey(window, 0, modifiers, key);
 
         return TRUE;
 }
@@ -751,6 +996,7 @@ _tWinMain(HINSTANCE instance, HINSTANCE hPrevInstance, LPTSTR lpCmdLine, int nCm
 
         BufferRegisterListener(TextFieldBuffer(g_buffer), BUFFER_ON_CHANGE, MyBufferEventHandler, main_window);
 
+        /* TODO: Load hook.dll dynamically and fail gracefully? */
         if (!WPHookRegister(main_window))
                 goto cleanup;
 

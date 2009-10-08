@@ -301,3 +301,20 @@ StatusToString(Status status, LPTSTR buffer, size_t size)
 
 #undef CASE_STATUS
 }
+
+/* Determines whether PREFIX is a case-insensitive prefix to STRING. */
+BOOL
+IsPrefixIgnoringCase(LPCTSTR string, LPCTSTR prefix)
+{
+        size_t string_length;
+        if (FAILED(StringCchLength(string, STRSAFE_MAX_CCH, &string_length)))
+                return FALSE;
+
+        size_t prefix_length;
+        if (FAILED(StringCchLength(prefix, STRSAFE_MAX_CCH, &prefix_length)))
+                return FALSE;
+
+        return CompareString(LOCALE_INVARIANT, NORM_IGNORECASE,
+                             string, (int)min(string_length, prefix_length),
+                             prefix, (int)prefix_length) == CSTR_EQUAL;
+}

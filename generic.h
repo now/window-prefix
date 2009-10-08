@@ -84,3 +84,4 @@ BOOL GetWindowTitle(HWND window, LPTSTR *title);
 Status LoadWindowCaptionFont(Font **font);
 int GetSystemMetricsDefault(int index, int default_dimension);
 BOOL StatusToString(Status status, LPTSTR buffer, size_t size);
+BOOL IsPrefixIgnoringCase(LPCTSTR string, LPCTSTR prefix);

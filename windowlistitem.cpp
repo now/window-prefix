@@ -67,28 +67,53 @@ WindowListItemSwitchTo(WindowListItem const *item)
         return MySwitchToThisWindow(item->window);
 }
 
-/* Determines whether PREFIX is a case-insensitive prefix to STRING. */
-static BOOL 
-IsPrefixIgnoringCase(LPCTSTR string, LPCTSTR prefix)
+static BOOL
+IsFlexibleMatch(LPCTSTR string, LPCTSTR chars)
 {
-        size_t string_length;
-        if (FAILED(StringCchLength(string, STRSAFE_MAX_CCH, &string_length)))
-                return FALSE;
+        LPCTSTR string_p = string, chars_p = chars;
+        while (*string_p != L'\0' && *chars_p != L'\0') {
+                if (CompareString(LOCALE_USER_DEFAULT,
+                                  IsCharUpper(*chars_p) ? 0 : NORM_IGNORECASE,
+                                  string_p, 1, chars_p, 1) == CSTR_EQUAL)
+                        chars_p = CharNext(chars_p);
+                string_p = CharNext(string_p);
+        }
 
-        size_t prefix_length;
-        if (FAILED(StringCchLength(prefix, STRSAFE_MAX_CCH, &prefix_length)))
-                return FALSE;
+        return *chars_p == L'\0';
+}
 
-        return CompareString(LOCALE_USER_DEFAULT, NORM_IGNORECASE,
-                             string, (int)min(string_length, prefix_length),
-                             prefix, (int)prefix_length) == CSTR_EQUAL;
+static BOOL
+IsSubMatch(LPCTSTR string, LPCTSTR chars)
+{
+        LPCTSTR string_p = string;
+
+        while (*string_p != L'\0') {
+                LPCTSTR test_p = string_p, chars_p = chars;
+
+                while (*test_p != L'\0' && *chars_p != L'\0') {
+                        if (CompareString(LOCALE_USER_DEFAULT,
+                                          IsCharUpper(*chars_p) ? 0 : NORM_IGNORECASE,
+                                          test_p, 1, chars_p, 1) != CSTR_EQUAL)
+                                break;
+
+                        test_p = CharNext(test_p);
+                        chars_p = CharNext(chars_p);
+                }
+
+                if (*chars_p == L'\0')
+                        return TRUE;
+
+                string_p = CharNext(string_p);
+        }
+
+        return *chars == L'\0';
 }
 
 /* Updates whether ITEM should be displayed, given PREFIX as a filter. */
 IterationState 
 WindowListItemFilter(WindowListItem *item, LPCTSTR prefix)
 {
-        item->shown = IsPrefixIgnoringCase(item->title, prefix);
+        item->shown = IsSubMatch(item->title, prefix);
 
         return IterationContinue;
 }
@@ -106,6 +131,7 @@ WindowListItemValidateSize(WindowListItem *item, Canvas const *canvas)
                                                            PointF(0.0f, 0.0f),
                                                            &title_area));
 
+        /* TODO: Why don’t we just use title_area.Height? */
         REAL font_height = canvas->font->GetHeight(canvas->graphics);
         RETURN_GDI_FAILURE(canvas->font->GetLastStatus());
 

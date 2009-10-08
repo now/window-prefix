@@ -107,16 +107,16 @@ static Status
 UpdateWidth(TextField *field, Graphics const *graphics)
 {
         if (BufferLength(field->buffer) == 0) {
-                field->size.Width = 0;
+                field->size.Width = 0.0f;
                 return Ok;
         }
 
         StringFormat format;
-        RETURN_GDI_FAILURE(SetupStringFormat(&format));
-        CharacterRange ranges[] = { CharacterRange(0, (INT)BufferLength(field->buffer)) };
+        RETURN_GDI_FAILURE(format.SetFormatFlags(StringFormatFlagsNoWrap | StringFormatFlagsMeasureTrailingSpaces));
+        RETURN_GDI_FAILURE(format.SetTrimming(StringTrimmingEllipsisCharacter));
+        CharacterRange ranges[] = { CharacterRange(0, BufferLength(field->buffer)) };
         RETURN_GDI_FAILURE(format.SetMeasurableCharacterRanges(1, ranges));
 
-        /* NOTE: It’s just evil that you have to specify an area. */
         RectF area(0.0f, 0.0f, 10000.0f, 10000.0f);
         Region regions[1];
         RETURN_GDI_FAILURE(graphics->MeasureCharacterRanges(BufferContents(field->buffer),

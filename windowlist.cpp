@@ -19,6 +19,9 @@ static LPCTSTR s_numbers[] = { L"1. ", L"2. ", L"3. ", L"4. ",
         L"5. ", L"6. ", L"7. ", L"8. ", L"9. ", L"0. " };
 #define N_NUMBERS    _countof(s_numbers)
 
+#define STRING_EMPTY_WARNING _(IDS_WINDOW_LIST_EMPTY_WARNING, L"No windows to switch to!")
+#define STRING_EMPTY_SHOWN_WARNING _(IDS_WINDOW_LIST_EMPTY_SHOWN_WARNING, L"No window titles match the given input!")
+
 /* A window-list item that has yet to be added to the window list.
  *
  * This is needed, as not all top-level windows should be kept in
@@ -263,6 +266,18 @@ WindowListLengthShown(WindowList *list)
         return n;
 }
 
+static LPCTSTR
+WindowListEmpty(WindowList *list)
+{
+        if (WindowListLength(list) == 0)
+                return STRING_EMPTY_WARNING;
+
+        if (WindowListLengthShown(list) == 0)
+                return STRING_EMPTY_SHOWN_WARNING;
+
+        return NULL;
+}
+
 /* Closure used when calculating the Size of a WindowList.
  *
  * CANVAS is the Canvas drawing will be done on.
@@ -319,6 +334,18 @@ WindowListSize(WindowList *list, Graphics *graphics, SizeF *size)
         size->Width = -1.0f;
         size->Height = 0.0f;
 
+        LPCTSTR message = WindowListEmpty(list);
+        if (message) {
+                RectF message_area;
+                RETURN_GDI_FAILURE(graphics->MeasureString(message, -1,
+                                                           list->font,
+                                                           PointF(0.0f, 0.0f),
+                                                           &message_area));
+                size->Width = message_area.Width;
+                size->Height = message_area.Height;
+                return Ok;
+        }
+
         WindowListSizeClosure closure = { { graphics, list->font}, size, Ok };
         WindowListIterate(list, WindowListSizeIterator, &closure);
         RETURN_GDI_FAILURE(closure.status);
@@ -331,6 +358,16 @@ WindowListSize(WindowList *list, Graphics *graphics, SizeF *size)
         }
 
         size->Width += list->number_width;
+
+        /* Also need to measure the “there are no windows matching…” message,
+         * as it may be displayed at any time. */
+        RectF message_area;
+        RETURN_GDI_FAILURE(graphics->MeasureString(STRING_EMPTY_SHOWN_WARNING,
+                                                   -1,
+                                                   list->font,
+                                                   PointF(0.0f, 0.0f),
+                                                   &message_area));
+        size->Width = max(size->Width, message_area.Width);
 
         return Ok;
 }
@@ -422,14 +459,11 @@ WindowListDrawIterator(WindowListItem *item, void *v_closure)
 
 /* Draws the text displayed when the WindowList is empty. */
 Status 
-WindowListDrawEmpty(WindowList *list, Graphics *graphics, RectF const *area)
+WindowListDrawEmpty(WindowList *list, Graphics *graphics, RectF const *area, LPCTSTR message)
 {
-#if 0
-        graphics->SetCompositingQuality(CompositingQualityGammaCorrected);
-        graphics->SetTextRenderingHint(TextRenderingHintClearTypeGridFit);
-#endif
-
-        REAL quarter_area_height = area->Height / 4;
+        REAL font_height = list->font->GetHeight(graphics);
+        RETURN_GDI_FAILURE(list->font->GetLastStatus());
+        REAL quarter_area_height = area->Height / 2 - font_height / 2;
         RectF y_centered_area(area->X, area->Y + quarter_area_height,
                               area->Width, area->Height - quarter_area_height);
 
@@ -437,13 +471,12 @@ WindowListDrawEmpty(WindowList *list, Graphics *graphics, RectF const *area)
         RETURN_GDI_FAILURE(format.GetLastStatus());
         RETURN_GDI_FAILURE(format.SetAlignment(StringAlignmentCenter));
 
-        /* A bug in GDI+ makes full red come out white when drawn on a
-         * non-opaque background, so use an almost-full red instead. */
-        SolidBrush red_brush(Color(255, 254, 0, 0));
+        /* A bug in GDI+ makes brushes for text come out white when drawn on a
+         * non-opaque background when using TextRenderingHintAntiAliasGridFit. */
+        SolidBrush red_brush(Color(255, 225, 50, 50));
         RETURN_GDI_FAILURE(red_brush.GetLastStatus());
 
-        return graphics->DrawString(_(IDS_WINDOW_LIST_EMPTY_WARNING,
-                                      L"No items match the given input!"), -1,
+        return graphics->DrawString(message, -1,
                                     list->font, y_centered_area, &format,
                                     &red_brush);
 }
@@ -452,8 +485,9 @@ WindowListDrawEmpty(WindowList *list, Graphics *graphics, RectF const *area)
 Status 
 WindowListDraw(WindowList *list, Graphics *graphics, RectF const *area)
 {
-        if (WindowListLengthShown(list) == 0)
-                return WindowListDrawEmpty(list, graphics, area);
+        LPCTSTR message = WindowListEmpty(list);
+        if (message)
+                return WindowListDrawEmpty(list, graphics, area, message);
 
         RectF number_area(area->X, area->Y, list->number_width, area->Height);
         RectF item_area(area->X + list->number_width, area->Y,

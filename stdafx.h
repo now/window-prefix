@@ -28,7 +28,7 @@
 #if 0
 #include <stdlib.h>
 #include <malloc.h>
-#include <memory.h>8
+#include <memory.h>
 #endif
 #include <tchar.h>
 #include <strsafe.h>

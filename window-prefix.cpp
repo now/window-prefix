@@ -698,9 +698,9 @@ CreateMainWindow(HINSTANCE instance, ATOM window_class, HWND *window, Error **er
 }
 
 #ifdef _DEBUG
-#  define MY_HOTKEY_KEY L'5'
+#  define MY_HOTKEY_KEY L'd'
 #else
-#  define MY_HOTKEY_KEY L'8'
+#  define MY_HOTKEY_KEY L'c'
 #endif
 
 static LPCTSTR
